@@ -41,7 +41,7 @@ export class NotionAPI {
     );
     const schema: Record<string, string> = {};
     if ("properties" in db) {
-      for (const [name, prop] of Object.entries(db.properties)) {
+      for (const [name, prop] of Object.entries(db.properties as Record<string, { type: string }>)) {
         schema[name] = prop.type;
       }
     }

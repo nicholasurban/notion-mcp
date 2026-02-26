@@ -5,8 +5,8 @@ import type { NotionConfig } from "../config.js";
 
 function makeCtx(queryResults: any[] = []) {
   const api = new NotionAPI("fake");
-  api.client.databases = {
-    ...api.client.databases,
+  api.client.dataSources = {
+    ...api.client.dataSources,
     query: vi.fn().mockResolvedValue({
       results: queryResults,
       next_cursor: null,
@@ -71,7 +71,7 @@ describe("handleQuery", () => {
       database: "content-calendar",
       query: '{"property": "Status", "status": {"equals": "Published"}}',
     });
-    expect(ctx.api.client.databases.query).toHaveBeenCalledWith(
+    expect(ctx.api.client.dataSources.query).toHaveBeenCalledWith(
       expect.objectContaining({
         filter: { property: "Status", status: { equals: "Published" } },
       })
@@ -85,7 +85,7 @@ describe("handleQuery", () => {
       database: "content-calendar",
       sort: '{"property": "Date", "direction": "descending"}',
     });
-    expect(ctx.api.client.databases.query).toHaveBeenCalledWith(
+    expect(ctx.api.client.dataSources.query).toHaveBeenCalledWith(
       expect.objectContaining({
         sorts: [{ property: "Date", direction: "descending" }],
       })

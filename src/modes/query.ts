@@ -59,15 +59,15 @@ export async function handleQuery(ctx: ToolContext, params: ToolParams): Promise
 
   const limit = params.limit ?? 50;
 
-  // Query the database
+  // Query the database (SDK v5 uses dataSources.query with data_source_id)
   const queryParams: any = {
-    database_id: dbConfig.id,
+    data_source_id: dbConfig.id,
     page_size: Math.min(limit, 100),
   };
   if (filter) queryParams.filter = filter;
   if (sorts) queryParams.sorts = sorts;
 
-  const response = await ctx.api.client.databases.query(queryParams);
+  const response = await ctx.api.client.dataSources.query(queryParams);
   const results = response.results;
 
   // Extract properties into rows
