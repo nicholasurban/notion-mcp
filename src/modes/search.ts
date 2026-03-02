@@ -20,10 +20,16 @@ export async function handleSearch(ctx: ToolContext, params: ToolParams): Promis
     filter: { property: "object", value: "page" },
   });
 
-  // Filter to only pages from configured databases (normalize IDs for comparison)
-  const filtered = response.results.filter((r: any) =>
-    r.parent?.type === "database_id" && idToName.has(r.parent.database_id.replace(/-/g, ""))
-  );
+  // Filter to only pages from configured databases (normalize IDs; SDK v5 uses "data_source_id" parent type)
+  const getParentDbId = (r: any): string | null => {
+    if (r.parent?.type === "database_id") return r.parent.database_id;
+    if (r.parent?.type === "data_source_id") return r.parent.database_id ?? r.parent.data_source_id;
+    return null;
+  };
+  const filtered = response.results.filter((r: any) => {
+    const dbId = getParentDbId(r);
+    return dbId && idToName.has(dbId.replace(/-/g, ""));
+  });
 
   const limited = filtered.slice(0, limit);
 
@@ -39,7 +45,8 @@ export async function handleSearch(ctx: ToolContext, params: ToolParams): Promis
       }
     }
 
-    const dbName = idToName.get(page.parent.database_id.replace(/-/g, "")) ?? "unknown";
+    const dbId = getParentDbId(page) ?? "";
+    const dbName = idToName.get(dbId.replace(/-/g, "")) ?? "unknown";
     const edited = page.last_edited_time?.slice(0, 10) ?? "";
 
     return { Title: title, Database: dbName, "Last Edited": edited };

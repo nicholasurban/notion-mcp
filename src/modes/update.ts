@@ -36,7 +36,12 @@ async function resolvePageDatabase(
     ctx.api.client.pages.retrieve({ page_id: pageId }),
   );
   const parent = (page as any).parent;
-  const databaseId = parent?.type === "database_id" ? parent.database_id : null;
+  // SDK v5 uses "data_source_id" parent type instead of "database_id"
+  const databaseId = parent?.type === "database_id"
+    ? parent.database_id
+    : parent?.type === "data_source_id"
+      ? (parent.database_id ?? parent.data_source_id)
+      : null;
 
   let dbName: string | null = null;
   if (databaseId) {
