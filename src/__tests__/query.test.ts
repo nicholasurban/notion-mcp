@@ -3,16 +3,18 @@ import { handleQuery } from "../modes/query.js";
 import { NotionAPI } from "../api.js";
 import type { NotionConfig } from "../config.js";
 
-function makeCtx(queryResults: any[] = []) {
+function makeCtx(queryResults: any[] = [], hasMore = false) {
   const api = new NotionAPI("fake");
-  api.client.dataSources = {
-    ...api.client.dataSources,
-    query: vi.fn().mockResolvedValue({
-      results: queryResults,
-      next_cursor: null,
-      has_more: false,
-    }),
-  } as any;
+  vi.spyOn(api, "queryDatabase").mockResolvedValue({
+    results: queryResults,
+    next_cursor: hasMore ? "cursor-2" : null,
+    has_more: hasMore,
+  });
+  vi.spyOn(api, "paginateAll").mockImplementation(async (fetcher, limit) => {
+    // Simulate single page for most tests
+    const page = await fetcher(undefined);
+    return page.results.slice(0, limit);
+  });
   const config: NotionConfig = {
     databases: {
       "content-calendar": {
@@ -20,15 +22,18 @@ function makeCtx(queryResults: any[] = []) {
         description: "Posts",
         fields: ["Title", "Status", "Date"],
         allowedActions: ["query", "read", "create", "update"],
+        aliases: [],
       },
       "read-only-db": {
         id: "db-222",
         description: "Archive",
         fields: ["Title"],
         allowedActions: ["query", "read"],
+        aliases: [],
       },
     },
     databaseNames: ["content-calendar", "read-only-db"],
+    aliasMap: {},
   };
   return { api, config };
 }
@@ -64,28 +69,32 @@ describe("handleQuery", () => {
     expect(result).toContain("2026-03-01");
   });
 
-  it("passes filter to Notion API", async () => {
+  it("passes filter via paginateAll", async () => {
     const ctx = makeCtx([]);
     await handleQuery(ctx, {
       mode: "query",
       database: "content-calendar",
       query: '{"property": "Status", "status": {"equals": "Published"}}',
     });
-    expect(ctx.api.client.dataSources.query).toHaveBeenCalledWith(
+    expect(ctx.api.paginateAll).toHaveBeenCalled();
+    // Verify the fetcher calls queryDatabase with the filter
+    expect(ctx.api.queryDatabase).toHaveBeenCalledWith(
+      "db-111",
       expect.objectContaining({
         filter: { property: "Status", status: { equals: "Published" } },
       })
     );
   });
 
-  it("passes sort to Notion API", async () => {
+  it("passes sort via paginateAll", async () => {
     const ctx = makeCtx([]);
     await handleQuery(ctx, {
       mode: "query",
       database: "content-calendar",
       sort: '{"property": "Date", "direction": "descending"}',
     });
-    expect(ctx.api.client.dataSources.query).toHaveBeenCalledWith(
+    expect(ctx.api.queryDatabase).toHaveBeenCalledWith(
+      "db-111",
       expect.objectContaining({
         sorts: [{ property: "Date", direction: "descending" }],
       })
@@ -103,5 +112,11 @@ describe("handleQuery", () => {
     const ctx = makeCtx([]);
     const result = await handleQuery(ctx, { mode: "query", database: "content-calendar" });
     expect(result).toContain("No results");
+  });
+
+  it("uses paginateAll with correct limit", async () => {
+    const ctx = makeCtx([]);
+    await handleQuery(ctx, { mode: "query", database: "content-calendar", limit: 150 });
+    expect(ctx.api.paginateAll).toHaveBeenCalledWith(expect.any(Function), 150);
   });
 });

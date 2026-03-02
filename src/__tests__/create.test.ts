@@ -29,15 +29,18 @@ function makeCtx() {
         description: "Posts",
         fields: ["Title", "Status"],
         allowedActions: ["query", "read", "create", "update"],
+        aliases: [],
       },
       "read-only": {
         id: "db-222",
         description: "Archive",
         fields: ["Title"],
         allowedActions: ["query", "read"],
+        aliases: [],
       },
     },
     databaseNames: ["content-calendar", "read-only"],
+    aliasMap: {},
   };
   return { api, config };
 }

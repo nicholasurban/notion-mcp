@@ -12,10 +12,16 @@ function makeCtx(searchResults: any[] = []) {
   });
   const config: NotionConfig = {
     databases: {
-      "content-calendar": { id: "db-111", description: "Posts", fields: ["Title"], allowedActions: ["query", "read", "create", "update"] },
-      "podcast-tracker": { id: "db-222", description: "Episodes", fields: ["Title"], allowedActions: ["query", "read", "create", "update"] },
+      "content-calendar": { id: "db-111", description: "Posts", fields: ["Title"], allowedActions: ["query", "read", "create", "update"], aliases: [] },
+      "podcast-tracker": { id: "db-222", description: "Episodes", fields: ["Title"], allowedActions: ["query", "read", "create", "update"], aliases: [] },
+      "products-shop": {
+        id: "db-333", description: "Products", fields: ["Brand", "Name"],
+        allowedActions: ["query", "read", "create", "update"], aliases: ["shop"],
+        searchFields: ["Name", "Brand", "Slug"],
+      },
     },
-    databaseNames: ["content-calendar", "podcast-tracker"],
+    databaseNames: ["content-calendar", "podcast-tracker", "products-shop"],
+    aliasMap: { shop: "products-shop" },
   };
   return { api, config };
 }
@@ -68,5 +74,55 @@ describe("handleSearch", () => {
     const ctx = makeCtx(pages);
     const result = await handleSearch(ctx, { mode: "search", query: "post", limit: 3 });
     expect(result).toContain("returned: 3");
+  });
+
+  describe("database-scoped search", () => {
+    it("uses property filters when database is provided", async () => {
+      const ctx = makeCtx();
+      vi.spyOn(ctx.api, "getSchema").mockResolvedValue({
+        Name: "title",
+        Brand: "rich_text",
+        Slug: "rich_text",
+        Rating: "number",
+      });
+      vi.spyOn(ctx.api, "paginateAll").mockResolvedValue([
+        {
+          id: "page-1",
+          properties: {
+            Brand: { type: "rich_text", rich_text: [{ plain_text: "TruDiagnostic" }] },
+            Name: { type: "title", title: [{ plain_text: "TruAge" }] },
+          },
+        },
+      ]);
+
+      const result = await handleSearch(ctx, { mode: "search", query: "TruDiagnostic", database: "products-shop" });
+      expect(result).toContain("TruDiagnostic");
+      expect(result).toContain("TruAge");
+      // Should NOT use global search
+      expect(ctx.api.client.search).not.toHaveBeenCalled();
+    });
+
+    it("rejects unknown database in scoped search", async () => {
+      const ctx = makeCtx();
+      const result = JSON.parse(await handleSearch(ctx, { mode: "search", query: "test", database: "nope" }));
+      expect(result.error).toContain("not found");
+    });
+
+    it("uses searchFields from config", async () => {
+      const ctx = makeCtx();
+      vi.spyOn(ctx.api, "getSchema").mockResolvedValue({
+        Name: "title",
+        Brand: "rich_text",
+        Slug: "rich_text",
+        Rating: "number",
+        Description: "rich_text",
+      });
+      vi.spyOn(ctx.api, "paginateAll").mockResolvedValue([]);
+
+      await handleSearch(ctx, { mode: "search", query: "test", database: "products-shop" });
+      // paginateAll should have been called; the fetcher builds an OR filter
+      // with only the searchFields (Name, Brand, Slug) — not Description or Rating
+      expect(ctx.api.paginateAll).toHaveBeenCalled();
+    });
   });
 });

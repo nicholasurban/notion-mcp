@@ -2,6 +2,9 @@ import type { ToolContext, ToolParams } from "../tool.js";
 import { formatTable } from "../format.js";
 import { extractProperty } from "../properties.js";
 
+/** Notion property types that support `contains` text filter */
+const TEXT_FILTER_TYPES = new Set(["title", "rich_text", "url", "email", "phone_number"]);
+
 export async function handleSearch(ctx: ToolContext, params: ToolParams): Promise<string> {
   if (!params.query) {
     return JSON.stringify({ error: "query parameter is required for search mode" });
@@ -9,6 +12,92 @@ export async function handleSearch(ctx: ToolContext, params: ToolParams): Promis
 
   const limit = params.limit ?? 50;
 
+  // Database-scoped search: query property values directly
+  if (params.database) {
+    return databaseSearch(ctx, params.database, params.query, limit);
+  }
+
+  // Global search: Notion search API (title-only)
+  return globalSearch(ctx, params.query, limit);
+}
+
+async function databaseSearch(ctx: ToolContext, dbName: string, query: string, limit: number): Promise<string> {
+  const dbConfig = ctx.config.databases[dbName];
+  if (!dbConfig) {
+    return JSON.stringify({
+      error: `Database '${dbName}' not found`,
+      suggestion: `Available: ${ctx.config.databaseNames.join(", ")}`,
+    });
+  }
+
+  // Get schema to discover searchable text fields
+  const schema = await ctx.api.getSchema(dbConfig.id);
+
+  // Determine which fields to search: config searchFields, or auto-discover text fields
+  let fieldNames: string[];
+  if (dbConfig.searchFields?.length) {
+    fieldNames = dbConfig.searchFields.filter((f) => f in schema && TEXT_FILTER_TYPES.has(schema[f]));
+  } else {
+    fieldNames = Object.entries(schema)
+      .filter(([, type]) => TEXT_FILTER_TYPES.has(type))
+      .map(([name]) => name);
+  }
+
+  if (fieldNames.length === 0) {
+    return JSON.stringify({ error: "No searchable text fields in this database" });
+  }
+
+  // Build OR filter with `contains` for each searchable field
+  const conditions = fieldNames.map((field) => {
+    const type = schema[field];
+    // Map property type to the correct Notion filter key
+    const filterKey = type === "title" ? "title" : type === "url" ? "url" : type === "email" ? "email" : type === "phone_number" ? "phone_number" : "rich_text";
+    return { property: field, [filterKey]: { contains: query } };
+  });
+
+  const filter = conditions.length === 1 ? conditions[0] : { or: conditions };
+
+  const results = await ctx.api.paginateAll(
+    (cursor) => ctx.api.queryDatabase(dbConfig.id, {
+      filter,
+      page_size: Math.min(limit, 100),
+      start_cursor: cursor,
+    }),
+    limit
+  );
+
+  // Extract properties (same logic as query mode)
+  const priorityFields = dbConfig.fields ?? [];
+  const rows = results.map((page: any) => {
+    const row: Record<string, string> = {};
+    for (const field of priorityFields) {
+      if (page.properties?.[field]) {
+        row[field] = extractProperty(page.properties[field]);
+      }
+    }
+    if (page.properties) {
+      for (const [key, prop] of Object.entries(page.properties)) {
+        if (key in row) continue;
+        const val = extractProperty(prop);
+        if (val && val !== "[unsupported]") {
+          row[key] = val;
+        }
+      }
+    }
+    return row;
+  });
+
+  const allColumns = new Set<string>(priorityFields);
+  for (const row of rows) {
+    for (const key of Object.keys(row)) allColumns.add(key);
+  }
+
+  const table = formatTable(rows, [...allColumns], { total: results.length });
+  if (rows.length === 0) return table;
+  return `<untrusted_content>\n${table}\n</untrusted_content>`;
+}
+
+async function globalSearch(ctx: ToolContext, query: string, limit: number): Promise<string> {
   // Build reverse map: database_id → friendly name (normalize to no hyphens)
   const idToName = new Map<string, string>();
   for (const [name, db] of Object.entries(ctx.config.databases)) {
@@ -16,7 +105,7 @@ export async function handleSearch(ctx: ToolContext, params: ToolParams): Promis
   }
 
   const response = await ctx.api.client.search({
-    query: params.query,
+    query,
     filter: { property: "object", value: "page" },
   });
 

@@ -3,7 +3,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import type { ToolParams } from "../tool.js";
 
-const VALID_TOPICS = ["query", "search", "read", "create", "update"];
+const VALID_TOPICS = ["query", "search", "read", "create", "update", "databases"];
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DOCS_DIR = join(__dirname, "..", "docs");
 

@@ -1,16 +1,25 @@
 import { z } from "zod";
 import type { NotionAPI, AIError } from "./api.js";
-import type { NotionConfig } from "./config.js";
+import type { NotionConfig, DatabaseConfig } from "./config.js";
 
 export const TOOL_NAME = "notion";
-export const TOOL_DESCRIPTION = "Read/write Notion pages and databases. Use help mode first for syntax.";
 
-export function buildToolSchema(databaseNames: string[]) {
+export function buildToolDescription(databases: Record<string, DatabaseConfig>): string {
+  const lines = ["Read/write Notion pages and databases.\n\nDatabases:"];
+  for (const [name, db] of Object.entries(databases)) {
+    lines.push(`- ${name}: ${db.description}`);
+  }
+  lines.push("\nUse help mode for filter/sort syntax.");
+  return lines.join("\n");
+}
+
+export function buildToolSchema(databaseNames: string[], aliasNames: string[] = []) {
+  const allDbValues = [...databaseNames, ...aliasNames];
   return {
     mode: z.enum(["help", "search", "query", "read", "create", "update"])
       .describe("Operation mode"),
-    database: z.enum(databaseNames as [string, ...string[]])
-      .optional().describe("Database name"),
+    database: z.enum(allDbValues as [string, ...string[]])
+      .optional().describe("Database name or alias (e.g. 'shop' → products-shop)"),
     page_id: z.string().optional().describe("Page UUID"),
     query: z.string().optional().describe("Search or filter text"),
     sort: z.string().optional().describe("Sort config JSON"),
@@ -40,7 +49,22 @@ export interface ToolContext {
   config: NotionConfig;
 }
 
+/** Resolve alias to canonical database name if needed */
+function resolveAlias(params: ToolParams, config: NotionConfig): void {
+  if (!params.database) return;
+  // Already a canonical name
+  if (config.databases[params.database]) return;
+  // Try alias lookup
+  const canonical = config.aliasMap[params.database.toLowerCase()];
+  if (canonical) {
+    params.database = canonical;
+  }
+}
+
 export async function toolHandler(ctx: ToolContext, params: ToolParams): Promise<string> {
+  // Resolve aliases before routing
+  resolveAlias(params, ctx.config);
+
   try {
     switch (params.mode) {
       case "help": {
