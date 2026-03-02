@@ -41,7 +41,7 @@ async function resolvePageDatabase(
   let dbName: string | null = null;
   if (databaseId) {
     for (const [name, db] of Object.entries(ctx.config.databases)) {
-      if (db.id === databaseId) {
+      if (db.id.replace(/-/g, "") === databaseId.replace(/-/g, "")) {
         dbName = name;
         break;
       }

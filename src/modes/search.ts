@@ -9,10 +9,10 @@ export async function handleSearch(ctx: ToolContext, params: ToolParams): Promis
 
   const limit = params.limit ?? 50;
 
-  // Build reverse map: database_id → friendly name
+  // Build reverse map: database_id → friendly name (normalize to no hyphens)
   const idToName = new Map<string, string>();
   for (const [name, db] of Object.entries(ctx.config.databases)) {
-    idToName.set(db.id, name);
+    idToName.set(db.id.replace(/-/g, ""), name);
   }
 
   const response = await ctx.api.client.search({
@@ -20,9 +20,9 @@ export async function handleSearch(ctx: ToolContext, params: ToolParams): Promis
     filter: { property: "object", value: "page" },
   });
 
-  // Filter to only pages from configured databases
+  // Filter to only pages from configured databases (normalize IDs for comparison)
   const filtered = response.results.filter((r: any) =>
-    r.parent?.type === "database_id" && idToName.has(r.parent.database_id)
+    r.parent?.type === "database_id" && idToName.has(r.parent.database_id.replace(/-/g, ""))
   );
 
   const limited = filtered.slice(0, limit);
@@ -39,7 +39,7 @@ export async function handleSearch(ctx: ToolContext, params: ToolParams): Promis
       }
     }
 
-    const dbName = idToName.get(page.parent.database_id) ?? "unknown";
+    const dbName = idToName.get(page.parent.database_id.replace(/-/g, "")) ?? "unknown";
     const edited = page.last_edited_time?.slice(0, 10) ?? "";
 
     return { Title: title, Database: dbName, "Last Edited": edited };

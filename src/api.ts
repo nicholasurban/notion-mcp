@@ -38,12 +38,22 @@ export class NotionAPI {
   async getSchema(databaseId: string): Promise<Record<string, string>> {
     const cached = this.schemaCache.get(databaseId);
     if (cached) return cached;
-    const db = await this.retryWithBackoff(() =>
-      this.client.databases.retrieve({ database_id: databaseId })
-    );
+
+    // SDK v5 databases.retrieve omits `properties` — use raw fetch with stable API version.
+    const res = await this.retryWithBackoff(async () => {
+      const r = await fetch(`https://api.notion.com/v1/databases/${databaseId}`, {
+        headers: {
+          "Authorization": `Bearer ${this.token}`,
+          "Notion-Version": "2022-06-28",
+        },
+      });
+      if (!r.ok) throw new Error(`Failed to retrieve database: ${r.status}`);
+      return r.json() as Promise<{ properties?: Record<string, { type: string }> }>;
+    });
+
     const schema: Record<string, string> = {};
-    if ("properties" in db) {
-      for (const [name, prop] of Object.entries(db.properties as Record<string, { type: string }>)) {
+    if (res.properties) {
+      for (const [name, prop] of Object.entries(res.properties)) {
         schema[name] = prop.type;
       }
     }
