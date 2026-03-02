@@ -6,7 +6,7 @@ Custom Notion MCP server — config-driven, token-optimized, remote-only. Single
 
 | | This server | [Official](https://github.com/makenotion/notion-mcp-server) |
 |---|---|---|
-| Always-on context cost | **~400 tokens** (1 tool, 10 params) | **~6,600 tokens** (22 tools) |
+| Always-on context cost | **~750 tokens** (1 tool, 10 params, DB directory) | **~6,600 tokens** (22 tools) |
 | Database access | Config-controlled whitelist | Full workspace traversal |
 | Content format | Markdown (3-5x smaller) | Raw Notion block JSON |
 | Response format | Pipe-delimited tables | Verbose JSON |
@@ -21,7 +21,7 @@ The official server loads 22 separate tools into every conversation. This server
 | Mode | Purpose | Required Params |
 |---|---|---|
 | `help` | Load docs for a mode on demand | `topic` |
-| `search` | Search across all configured databases | `query` |
+| `search` | Search across databases (global or scoped with property-level matching) | `query`, optionally `database` |
 | `query` | Query a specific database with filters/sorts | `database`, optionally `query`, `sort` |
 | `read` | Get page content as markdown | `page_id` |
 | `create` | Create page in a database | `database`, `properties`, optionally `content` |
@@ -30,8 +30,11 @@ The official server loads 22 separate tools into every conversation. This server
 ### Examples
 
 ```jsonc
-// Search across all databases
+// Search across all databases (title-only)
 {"mode": "search", "query": "cold plunge"}
+
+// Search within a specific database (matches all text properties)
+{"mode": "search", "query": "TruDiagnostic", "database": "products-shop"}
 
 // Query a specific database with filters
 {"mode": "query", "database": "written-content", "query": "{\"property\": \"Status\", \"status\": {\"equals\": \"Published\"}}"}
@@ -74,14 +77,16 @@ Create a JSON config defining which databases the server can access. Base64-enco
 | Field | Required | Description |
 |---|---|---|
 | `id` | Yes | Notion database ID (32-char hex, no dashes) |
-| `description` | No | Helps the AI pick the right database |
+| `description` | No | Surfaced in tool description to help AI pick the right database |
 | `fields` | No | Priority fields for output formatting |
 | `allowedActions` | No | Defaults to all 4 if omitted |
+| `aliases` | No | Alternative names the AI can use (e.g. `["shop", "products"]`) |
+| `searchFields` | No | Property names to search in database-scoped search mode |
 
 **Rules:**
 - Only databases listed in config are accessible (security boundary)
 - Database IDs are never exposed to the AI — only friendly names
-- `search` mode automatically spans all configured databases
+- `search` mode spans all configured databases (or scoped to one with property-level matching)
 - Adding a database = one config entry + restart
 
 ### Encoding the config
@@ -115,10 +120,10 @@ Two auth methods, used simultaneously:
 
 ## Token Optimization Strategy
 
-**Layer 1 — Schema (~400 tokens always loaded)**
-- Single tool with 10 parameters, 1-sentence description
-- Database names injected as dynamic enum from config
-- No examples or verbose metadata in schema
+**Layer 1 — Schema (~750 tokens always loaded)**
+- Single tool with 10 parameters
+- Dynamic tool description lists all databases with descriptions
+- Database names + aliases injected as dynamic enum from config
 
 **Layer 2 — On-demand docs (0 tokens until requested)**
 - `help` mode reads markdown files from `docs/` per-mode
@@ -149,7 +154,7 @@ Two auth methods, used simultaneously:
 
 ```bash
 npm install
-npm test           # 112 tests
+npm test           # 122 tests
 npm run build      # TypeScript → dist/
 ```
 
@@ -217,8 +222,9 @@ src/
     create.ts       # Page creator with markdown → blocks
     update.ts       # Page updater with batch support
   docs/
+    databases.md    # Database directory, aliases, scoped search
     query.md        # Filter syntax, sort config
-    search.md       # Search usage
+    search.md       # Search usage (global + database-scoped)
     read.md         # Read output format
     create.md       # Property format, content syntax
     update.md       # Update modes, batch usage

@@ -22,7 +22,7 @@ function makeCtx(pageProps: any = {}, blocks: any[] = []) {
       }),
     },
   } as any;
-  const config: NotionConfig = { databases: {}, databaseNames: [] };
+  const config: NotionConfig = { databases: {}, databaseNames: [], aliasMap: {} };
   return { api, config };
 }
 

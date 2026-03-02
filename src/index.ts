@@ -3,7 +3,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import express from "express";
 import { loadConfig } from "./config.js";
 import { NotionAPI } from "./api.js";
-import { TOOL_NAME, TOOL_DESCRIPTION, buildToolSchema, toolHandler } from "./tool.js";
+import { TOOL_NAME, buildToolDescription, buildToolSchema, toolHandler } from "./tool.js";
 import { setupOAuth } from "./oauth.js";
 import type { ToolContext } from "./tool.js";
 
@@ -21,9 +21,10 @@ const ctx: ToolContext = { api, config };
 console.error(`Loaded ${config.databaseNames.length} databases: ${config.databaseNames.join(", ")}`);
 
 const server = new McpServer({ name: "notion-mcp", version: "1.0.0" });
-const schema = buildToolSchema(config.databaseNames);
+const schema = buildToolSchema(config.databaseNames, Object.keys(config.aliasMap));
+const toolDescription = buildToolDescription(config.databases);
 
-server.tool(TOOL_NAME, TOOL_DESCRIPTION, schema, async (params) => {
+server.tool(TOOL_NAME, toolDescription, schema, async (params) => {
   const result = await toolHandler(ctx, params as any);
   return { content: [{ type: "text" as const, text: result }] };
 });

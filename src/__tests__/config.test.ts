@@ -42,4 +42,68 @@ describe("loadConfig", () => {
     const config = loadConfig(b64);
     expect(config.databaseNames).toEqual(["db-a", "db-b"]);
   });
+
+  it("builds alias map from database aliases", () => {
+    const raw = {
+      databases: {
+        "products-shop": {
+          id: "abc123",
+          description: "Products",
+          aliases: ["shop", "products", "store"],
+        },
+        "affiliate-details": {
+          id: "def456",
+          description: "Affiliates",
+          aliases: ["affiliates", "partners"],
+        },
+      },
+    };
+    const b64 = Buffer.from(JSON.stringify(raw)).toString("base64");
+    const config = loadConfig(b64);
+    expect(config.aliasMap["shop"]).toBe("products-shop");
+    expect(config.aliasMap["products"]).toBe("products-shop");
+    expect(config.aliasMap["store"]).toBe("products-shop");
+    expect(config.aliasMap["affiliates"]).toBe("affiliate-details");
+    expect(config.aliasMap["partners"]).toBe("affiliate-details");
+  });
+
+  it("alias map is case-insensitive", () => {
+    const raw = {
+      databases: {
+        "products-shop": {
+          id: "abc123",
+          aliases: ["Shop", "PRODUCTS"],
+        },
+      },
+    };
+    const b64 = Buffer.from(JSON.stringify(raw)).toString("base64");
+    const config = loadConfig(b64);
+    expect(config.aliasMap["shop"]).toBe("products-shop");
+    expect(config.aliasMap["products"]).toBe("products-shop");
+  });
+
+  it("parses searchFields when provided", () => {
+    const raw = {
+      databases: {
+        "products-shop": {
+          id: "abc123",
+          searchFields: ["Name", "Brand", "Slug"],
+        },
+      },
+    };
+    const b64 = Buffer.from(JSON.stringify(raw)).toString("base64");
+    const config = loadConfig(b64);
+    expect(config.databases["products-shop"].searchFields).toEqual(["Name", "Brand", "Slug"]);
+  });
+
+  it("searchFields is undefined when not provided", () => {
+    const raw = {
+      databases: {
+        "db-a": { id: "1", description: "A" },
+      },
+    };
+    const b64 = Buffer.from(JSON.stringify(raw)).toString("base64");
+    const config = loadConfig(b64);
+    expect(config.databases["db-a"].searchFields).toBeUndefined();
+  });
 });

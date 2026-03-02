@@ -59,13 +59,16 @@ export async function handleQuery(ctx: ToolContext, params: ToolParams): Promise
 
   const limit = params.limit ?? 50;
 
-  // Query via stable /databases/{id}/query endpoint (dataSources.query is unreliable).
-  const response = await ctx.api.queryDatabase(dbConfig.id, {
-    filter,
-    sorts,
-    page_size: Math.min(limit, 100),
-  });
-  const results = response.results;
+  // Paginate through all results up to limit
+  const results = await ctx.api.paginateAll(
+    (cursor) => ctx.api.queryDatabase(dbConfig.id, {
+      filter,
+      sorts,
+      page_size: Math.min(limit, 100),
+      start_cursor: cursor,
+    }),
+    limit
+  );
 
   // Extract properties into rows
   const priorityFields = dbConfig.fields ?? [];

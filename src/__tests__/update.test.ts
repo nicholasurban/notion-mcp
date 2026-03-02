@@ -33,9 +33,11 @@ function makeCtx() {
         description: "Posts",
         fields: ["Title", "Status"],
         allowedActions: ["query", "read", "create", "update"],
+        aliases: [],
       },
     },
     databaseNames: ["content-calendar"],
+    aliasMap: {},
   };
   return { api, config };
 }

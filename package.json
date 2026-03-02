@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "build": "tsc && cp -r src/docs dist/docs",
+    "build": "tsc && rm -rf dist/docs && cp -r src/docs dist/docs",
     "clean": "rm -rf dist",
     "test": "vitest run",
     "test:watch": "vitest"
