@@ -3,10 +3,12 @@ import type { DatabaseConfig } from "./config.js";
 
 export class NotionAPI {
   public client: Client;
+  private token: string;
   private schemaCache: Map<string, Record<string, string>> = new Map();
 
   constructor(token: string) {
     this.client = new Client({ auth: token });
+    this.token = token;
   }
 
   resolveDatabase(name: string, databases: Record<string, DatabaseConfig>): string {
@@ -47,6 +49,35 @@ export class NotionAPI {
     }
     this.schemaCache.set(databaseId, schema);
     return schema;
+  }
+
+  async queryDatabase(databaseId: string, params: { filter?: any; sorts?: any[]; page_size?: number; start_cursor?: string }): Promise<{ results: any[]; next_cursor: string | null; has_more: boolean }> {
+    const body: any = { page_size: params.page_size ?? 100 };
+    if (params.filter) body.filter = params.filter;
+    if (params.sorts) body.sorts = params.sorts;
+    if (params.start_cursor) body.start_cursor = params.start_cursor;
+
+    // SDK v5 dataSources.query uses a newer API version that doesn't work for
+    // all databases. Use raw fetch with the stable 2022-06-28 API version.
+    return this.retryWithBackoff(async () => {
+      const res = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${this.token}`,
+          "Notion-Version": "2022-06-28",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const errBody: any = await res.json().catch(() => ({ message: res.statusText }));
+        const e: any = new Error(errBody.message || "Notion API error");
+        e.status = res.status;
+        e.code = errBody.code;
+        throw e;
+      }
+      return res.json() as Promise<{ results: any[]; next_cursor: string | null; has_more: boolean }>;
+    });
   }
 
   async paginateAll<T>(
