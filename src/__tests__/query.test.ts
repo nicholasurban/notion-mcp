@@ -13,7 +13,7 @@ function makeCtx(queryResults: any[] = [], hasMore = false) {
   vi.spyOn(api, "paginateAll").mockImplementation(async (fetcher, limit) => {
     // Simulate single page for most tests
     const page = await fetcher(undefined);
-    return page.results.slice(0, limit);
+    return { results: page.results.slice(0, limit), has_more: false };
   });
   const config: NotionConfig = {
     databases: {
@@ -118,5 +118,24 @@ describe("handleQuery", () => {
     const ctx = makeCtx([]);
     await handleQuery(ctx, { mode: "query", database: "content-calendar", limit: 150 });
     expect(ctx.api.paginateAll).toHaveBeenCalledWith(expect.any(Function), 150);
+  });
+
+  it("shows COMPLETE when all results returned", async () => {
+    const ctx = makeCtx([
+      { id: "page-1", properties: { Title: { type: "title", title: [{ plain_text: "Post 1" }] } } },
+    ]);
+    const result = await handleQuery(ctx, { mode: "query", database: "content-calendar" });
+    expect(result).toContain("COMPLETE");
+  });
+
+  it("shows TRUNCATED when more results exist", async () => {
+    const ctx = makeCtx([]);
+    vi.spyOn(ctx.api, "paginateAll").mockResolvedValue({
+      results: [{ id: "p1", properties: { Title: { type: "title", title: [{ plain_text: "X" }] } } }],
+      has_more: true,
+    });
+    const result = await handleQuery(ctx, { mode: "query", database: "content-calendar" });
+    expect(result).toContain("TRUNCATED");
+    expect(result).toContain("MORE EXIST");
   });
 });
