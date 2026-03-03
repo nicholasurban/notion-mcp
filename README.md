@@ -82,6 +82,22 @@ Create a JSON config defining which databases the server can access. Base64-enco
 | `allowedActions` | No | Defaults to all 4 if omitted |
 | `aliases` | No | Alternative names the AI can use (e.g. `["shop", "products"]`) |
 | `searchFields` | No | Property names to search in database-scoped search mode |
+| `writeAllowlist` | No | Property names allowed in create/update. If non-empty, unlisted properties are rejected. Empty = no enforcement (default). |
+
+### Write Safety
+
+When `writeAllowlist` is configured for a database:
+
+- **Allowlist enforcement**: Only listed properties can be sent in `create` or `update`. Unlisted properties return an error before any Notion API call.
+- **Empty-value stripping**: `null`, `""`, and `[]` values are automatically removed to prevent accidental field clearing.
+- **Explicit clearing**: To intentionally clear a field, use the `clear_fields` parameter: `{"clear_fields": ["Deal URL", "Discount Code"]}`. Fields in `clear_fields` must also be in the allowlist.
+- **Audit log**: All writes are logged to append-only JSONL files at `AUDIT_LOG_PATH` (default `/data/audit`).
+
+### Pagination Metadata
+
+Every `query` and `search` response includes a trailing status line:
+- `✅ COMPLETE — all N matching items returned.`
+- `⚠️ TRUNCATED — returned N items but MORE EXIST in database. Increase limit or paginate to get all results.`
 
 **Rules:**
 - Only databases listed in config are accessible (security boundary)
@@ -208,7 +224,9 @@ src/
   index.ts          # Express HTTP server + MCP SDK setup
   config.ts         # Zod-validated config loader
   api.ts            # Notion API client (retry, cache, pagination)
-  tool.ts           # Single tool schema + mode dispatch
+  tool.ts           # Single tool schema + mode dispatch (incl. clear_fields param)
+  safety.ts         # Write allowlist validation + empty-value stripping
+  audit.ts          # Append-only JSONL write audit log
   markdown.ts       # Bidirectional Notion blocks ↔ markdown
   properties.ts     # Property value extraction (all types)
   format.ts         # Pipe-delimited table formatter
