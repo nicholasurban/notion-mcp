@@ -25,6 +25,11 @@ describe("buildToolSchema", () => {
     expect(enumType.options).toContain("products");
   });
 
+  it("schema accepts clear_fields parameter", () => {
+    const schema = buildToolSchema(["test-db"], []);
+    expect(schema.clear_fields).toBeDefined();
+  });
+
   it("tool name is set", () => {
     expect(TOOL_NAME).toBe("notion");
   });

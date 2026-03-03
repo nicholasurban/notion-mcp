@@ -29,6 +29,8 @@ export function buildToolSchema(databaseNames: string[], aliasNames: string[] = 
     topic: z.string().optional().describe("Help topic name"),
     limit: z.number().int().min(1).max(200).default(50).optional()
       .describe("Max results"),
+    clear_fields: z.array(z.string()).optional()
+      .describe("Fields to explicitly clear (required to intentionally empty a field)"),
   };
 }
 
@@ -42,6 +44,7 @@ export type ToolParams = {
   content?: string;
   topic?: string;
   limit?: number;
+  clear_fields?: string[];
 };
 
 export interface ToolContext {
