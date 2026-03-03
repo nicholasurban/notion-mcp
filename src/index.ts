@@ -5,6 +5,7 @@ import { loadConfig } from "./config.js";
 import { NotionAPI } from "./api.js";
 import { TOOL_NAME, buildToolDescription, buildToolSchema, toolHandler } from "./tool.js";
 import { setupOAuth } from "./oauth.js";
+import { AuditLog } from "./audit.js";
 import type { ToolContext } from "./tool.js";
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
@@ -16,7 +17,9 @@ if (!configB64) { console.error("CONFIG_JSON required"); process.exit(1); }
 
 const config = loadConfig(configB64);
 const api = new NotionAPI(notionToken);
-const ctx: ToolContext = { api, config };
+const auditDir = process.env.AUDIT_LOG_PATH ?? "/data/audit";
+const auditLog = new AuditLog(auditDir);
+const ctx: ToolContext = { api, config, auditLog };
 
 console.error(`Loaded ${config.databaseNames.length} databases: ${config.databaseNames.join(", ")}`);
 

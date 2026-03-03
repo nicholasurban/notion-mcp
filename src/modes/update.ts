@@ -127,6 +127,18 @@ async function singleUpdate(
     await replaceContent(ctx, pageId, params.content);
   }
 
+  // Audit: log the write (best-effort)
+  if (ctx.auditLog && params.properties) {
+    ctx.auditLog.log({
+      mode: "update",
+      database: dbName ?? "unknown",
+      page_id: pageId,
+      fields_sent: Object.keys(params.properties),
+      clear_fields: params.clear_fields ?? [],
+      previous_values: {},  // previous values require extra read — Phase 2
+    }).catch(() => {});
+  }
+
   return JSON.stringify({ updated: true, page_id: pageId });
 }
 
@@ -177,6 +189,18 @@ async function batchUpdate(
         ctx.api.client.pages.update({ page_id: pageId, properties: notionProps as any }),
       );
       results.push({ page_id: pageId, ok: true });
+
+      // Audit: log the write (best-effort)
+      if (ctx.auditLog) {
+        ctx.auditLog.log({
+          mode: "update",
+          database: dbName ?? "unknown",
+          page_id: pageId,
+          fields_sent: Object.keys(cleanedProps),
+          clear_fields: params.clear_fields ?? [],
+          previous_values: {},  // Phase 2
+        }).catch(() => {});
+      }
     } catch (e: any) {
       results.push({ page_id: pageId, ok: false, error: e.message });
     }

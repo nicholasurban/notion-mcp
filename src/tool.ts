@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { NotionAPI, AIError } from "./api.js";
 import type { NotionConfig, DatabaseConfig } from "./config.js";
+import type { AuditLog } from "./audit.js";
 
 export const TOOL_NAME = "notion";
 
@@ -50,6 +51,7 @@ export type ToolParams = {
 export interface ToolContext {
   api: NotionAPI;
   config: NotionConfig;
+  auditLog?: AuditLog;
 }
 
 /** Resolve alias to canonical database name if needed */
