@@ -23,14 +23,17 @@ const ctx: ToolContext = { api, config, auditLog };
 
 console.error(`Loaded ${config.databaseNames.length} databases: ${config.databaseNames.join(", ")}`);
 
-const server = new McpServer({ name: "notion-mcp", version: "1.0.0" });
 const schema = buildToolSchema(config.databaseNames, Object.keys(config.aliasMap));
 const toolDescription = buildToolDescription(config.databases);
 
-server.tool(TOOL_NAME, toolDescription, schema, async (params) => {
-  const result = await toolHandler(ctx, params as any);
-  return { content: [{ type: "text" as const, text: result }] };
-});
+function createServer(): McpServer {
+  const s = new McpServer({ name: "notion-mcp", version: "1.0.0" });
+  s.tool(TOOL_NAME, toolDescription, schema, async (params) => {
+    const result = await toolHandler(ctx, params as any);
+    return { content: [{ type: "text" as const, text: result }] };
+  });
+  return s;
+}
 
 const app = express();
 app.use(express.json());
@@ -61,7 +64,8 @@ app.post("/mcp", async (req, res) => {
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
   });
-  res.on("close", () => transport.close());
+  const server = createServer();
+  res.on("close", () => { transport.close(); server.close(); });
   await server.connect(transport);
   await transport.handleRequest(req, res, req.body);
 });
