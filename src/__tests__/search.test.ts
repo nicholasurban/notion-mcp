@@ -85,15 +85,18 @@ describe("handleSearch", () => {
         Slug: "rich_text",
         Rating: "number",
       });
-      vi.spyOn(ctx.api, "paginateAll").mockResolvedValue([
-        {
-          id: "page-1",
-          properties: {
-            Brand: { type: "rich_text", rich_text: [{ plain_text: "TruDiagnostic" }] },
-            Name: { type: "title", title: [{ plain_text: "TruAge" }] },
+      vi.spyOn(ctx.api, "paginateAll").mockResolvedValue({
+        results: [
+          {
+            id: "page-1",
+            properties: {
+              Brand: { type: "rich_text", rich_text: [{ plain_text: "TruDiagnostic" }] },
+              Name: { type: "title", title: [{ plain_text: "TruAge" }] },
+            },
           },
-        },
-      ]);
+        ],
+        has_more: false,
+      });
 
       const result = await handleSearch(ctx, { mode: "search", query: "TruDiagnostic", database: "products-shop" });
       expect(result).toContain("TruDiagnostic");
@@ -108,6 +111,29 @@ describe("handleSearch", () => {
       expect(result.error).toContain("not found");
     });
 
+    it("shows COMPLETE when all results returned", async () => {
+      const ctx = makeCtx();
+      vi.spyOn(ctx.api, "getSchema").mockResolvedValue({ Name: "title", Brand: "rich_text", Slug: "rich_text" });
+      vi.spyOn(ctx.api, "paginateAll").mockResolvedValue({
+        results: [{ id: "p1", properties: { Name: { type: "title", title: [{ plain_text: "Item" }] } } }],
+        has_more: false,
+      });
+      const result = await handleSearch(ctx, { mode: "search", query: "Item", database: "products-shop" });
+      expect(result).toContain("COMPLETE");
+    });
+
+    it("shows TRUNCATED when more results exist", async () => {
+      const ctx = makeCtx();
+      vi.spyOn(ctx.api, "getSchema").mockResolvedValue({ Name: "title", Brand: "rich_text", Slug: "rich_text" });
+      vi.spyOn(ctx.api, "paginateAll").mockResolvedValue({
+        results: [{ id: "p1", properties: { Name: { type: "title", title: [{ plain_text: "Item" }] } } }],
+        has_more: true,
+      });
+      const result = await handleSearch(ctx, { mode: "search", query: "Item", database: "products-shop" });
+      expect(result).toContain("TRUNCATED");
+      expect(result).toContain("MORE EXIST");
+    });
+
     it("uses searchFields from config", async () => {
       const ctx = makeCtx();
       vi.spyOn(ctx.api, "getSchema").mockResolvedValue({
@@ -117,7 +143,7 @@ describe("handleSearch", () => {
         Rating: "number",
         Description: "rich_text",
       });
-      vi.spyOn(ctx.api, "paginateAll").mockResolvedValue([]);
+      vi.spyOn(ctx.api, "paginateAll").mockResolvedValue({ results: [], has_more: false });
 
       await handleSearch(ctx, { mode: "search", query: "test", database: "products-shop" });
       // paginateAll should have been called; the fetcher builds an OR filter

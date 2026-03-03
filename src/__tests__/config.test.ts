@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { loadConfig } from "../config.js";
 
+const toB64 = (obj: any) => Buffer.from(JSON.stringify(obj)).toString("base64");
+
 describe("loadConfig", () => {
   it("parses valid base64 config", () => {
     const raw = {
@@ -105,5 +107,28 @@ describe("loadConfig", () => {
     const b64 = Buffer.from(JSON.stringify(raw)).toString("base64");
     const config = loadConfig(b64);
     expect(config.databases["db-a"].searchFields).toBeUndefined();
+  });
+
+  it("parses writeAllowlist from config", () => {
+    const cfg = loadConfig(toB64({
+      databases: {
+        "test-db": {
+          id: "abc123",
+          description: "Test",
+          fields: ["Title", "Status"],
+          writeAllowlist: ["Title", "Status"],
+        },
+      },
+    }));
+    expect(cfg.databases["test-db"].writeAllowlist).toEqual(["Title", "Status"]);
+  });
+
+  it("defaults writeAllowlist to empty array when omitted", () => {
+    const cfg = loadConfig(toB64({
+      databases: {
+        "test-db": { id: "abc123", description: "Test" },
+      },
+    }));
+    expect(cfg.databases["test-db"].writeAllowlist).toEqual([]);
   });
 });

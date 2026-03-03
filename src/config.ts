@@ -6,6 +6,7 @@ const DatabaseSchema = z.object({
   id: z.string().min(1),
   description: z.string().default(""),
   fields: z.array(z.string()).default([]),
+  writeAllowlist: z.array(z.string()).default([]),
   allowedActions: z.array(z.enum(ALL_ACTIONS)).default([...ALL_ACTIONS]),
   aliases: z.array(z.string()).default([]),
   searchFields: z.array(z.string()).optional(),

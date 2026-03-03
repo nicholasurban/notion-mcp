@@ -34,6 +34,7 @@ function makeCtx() {
         fields: ["Title", "Status"],
         allowedActions: ["query", "read", "create", "update"],
         aliases: [],
+        writeAllowlist: ["Title", "Status"],
       },
     },
     databaseNames: ["content-calendar"],
@@ -108,5 +109,56 @@ describe("handleUpdate", () => {
       page_id: "12345678-1234-1234-1234-123456789abc",
     }));
     expect(result.error).toContain("properties or content");
+  });
+
+  it("rejects properties not in writeAllowlist", async () => {
+    const ctx = makeCtx();
+    ctx.config.databases["content-calendar"].writeAllowlist = ["Title"];
+    const result = JSON.parse(await handleUpdate(ctx, {
+      mode: "update",
+      page_id: "12345678-1234-1234-1234-123456789abc",
+      properties: { Status: "Published" },
+    }));
+    expect(result.error).toContain("writeAllowlist");
+    expect(result.error).toContain("Status");
+  });
+
+  it("allows properties in writeAllowlist", async () => {
+    const ctx = makeCtx();
+    ctx.config.databases["content-calendar"].writeAllowlist = ["Title", "Status"];
+    const result = JSON.parse(await handleUpdate(ctx, {
+      mode: "update",
+      page_id: "12345678-1234-1234-1234-123456789abc",
+      properties: { Status: "Published" },
+    }));
+    expect(result.updated).toBe(true);
+  });
+
+  it("strips empty values from properties", async () => {
+    const ctx = makeCtx();
+    ctx.config.databases["content-calendar"].writeAllowlist = ["Title", "Status"];
+    const result = JSON.parse(await handleUpdate(ctx, {
+      mode: "update",
+      page_id: "12345678-1234-1234-1234-123456789abc",
+      properties: { Status: "Published", Title: "" },
+    }));
+    expect(result.updated).toBe(true);
+    const updateCall = (ctx.api.client.pages.update as any).mock.calls[0][0];
+    expect(updateCall.properties).not.toHaveProperty("Title");
+  });
+
+  it("handles clear_fields by sending empty values for those fields only", async () => {
+    const ctx = makeCtx();
+    ctx.config.databases["content-calendar"].writeAllowlist = ["Title", "Status"];
+    const result = JSON.parse(await handleUpdate(ctx, {
+      mode: "update",
+      page_id: "12345678-1234-1234-1234-123456789abc",
+      properties: { Title: "New Title" },
+      clear_fields: ["Status"],
+    }));
+    expect(result.updated).toBe(true);
+    // Verify Status was sent as explicit clear
+    const updateCall = (ctx.api.client.pages.update as any).mock.calls[0][0];
+    expect(updateCall.properties.Status).toBeDefined();
   });
 });

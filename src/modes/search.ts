@@ -57,7 +57,7 @@ async function databaseSearch(ctx: ToolContext, dbName: string, query: string, l
 
   const filter = conditions.length === 1 ? conditions[0] : { or: conditions };
 
-  const results = await ctx.api.paginateAll(
+  const { results, has_more } = await ctx.api.paginateAll(
     (cursor) => ctx.api.queryDatabase(dbConfig.id, {
       filter,
       page_size: Math.min(limit, 100),
@@ -93,8 +93,13 @@ async function databaseSearch(ctx: ToolContext, dbName: string, query: string, l
   }
 
   const table = formatTable(rows, [...allColumns], { total: results.length });
-  if (rows.length === 0) return table;
-  return `<untrusted_content>\n${table}\n</untrusted_content>`;
+
+  const paginationLine = has_more
+    ? `⚠️ TRUNCATED — returned ${rows.length} items but MORE EXIST in database. Increase limit or paginate to get all results.`
+    : `✅ COMPLETE — all ${rows.length} matching items returned.`;
+
+  if (rows.length === 0) return `${table}\n${paginationLine}`;
+  return `<untrusted_content>\n${table}\n</untrusted_content>\n${paginationLine}`;
 }
 
 async function globalSearch(ctx: ToolContext, query: string, limit: number): Promise<string> {
@@ -143,7 +148,11 @@ async function globalSearch(ctx: ToolContext, query: string, limit: number): Pro
 
   const table = formatTable(rows, ["Title", "Database", "Last Edited"], { total: filtered.length });
 
-  if (rows.length === 0) return table;
+  const has_more = filtered.length > limited.length;
+  const paginationLine = has_more
+    ? `⚠️ TRUNCATED — returned ${limited.length} items but MORE EXIST. Increase limit to get more results.`
+    : `✅ COMPLETE — all ${limited.length} matching items returned.`;
 
-  return `<untrusted_content>\n${table}\n</untrusted_content>`;
+  if (rows.length === 0) return `${table}\n${paginationLine}`;
+  return `<untrusted_content>\n${table}\n</untrusted_content>\n${paginationLine}`;
 }

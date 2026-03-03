@@ -1,6 +1,7 @@
 import type { ToolContext, ToolParams } from "../tool.js";
 import { AIError } from "../api.js";
 import { markdownToBlocks } from "../markdown.js";
+import { validateWriteAllowlist, stripEmptyValues } from "../safety.js";
 
 const MAX_CONTENT_BYTES = 100_000;
 
@@ -81,6 +82,19 @@ export async function handleCreate(ctx: ToolContext, params: ToolParams): Promis
 
   if (params.content && params.content.length > MAX_CONTENT_BYTES) {
     return JSON.stringify({ error: `Content exceeds 100KB limit (${params.content.length} chars)` });
+  }
+
+  // Safety: validate writeAllowlist
+  if (dbConfig.writeAllowlist && dbConfig.writeAllowlist.length > 0) {
+    const allowlistErr = validateWriteAllowlist(params.properties, dbConfig.writeAllowlist, params.clear_fields);
+    if (allowlistErr) return JSON.stringify({ error: allowlistErr });
+  }
+
+  // Safety: strip empty values
+  params.properties = stripEmptyValues(params.properties) as Record<string, unknown>;
+
+  if (Object.keys(params.properties).length === 0 && !params.content) {
+    return JSON.stringify({ error: "All properties were empty after stripping — nothing to create" });
   }
 
   const dbId = dbConfig.id;

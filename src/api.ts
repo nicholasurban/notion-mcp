@@ -93,16 +93,25 @@ export class NotionAPI {
   async paginateAll<T>(
     fetcher: (cursor?: string) => Promise<{ results: T[]; next_cursor: string | null; has_more: boolean }>,
     limit: number
-  ): Promise<T[]> {
+  ): Promise<{ results: T[]; has_more: boolean }> {
     const all: T[] = [];
     let cursor: string | undefined;
+    let moreAvailable = false;
     while (all.length < limit) {
       const page = await this.retryWithBackoff(() => fetcher(cursor));
       all.push(...page.results);
       if (!page.has_more || !page.next_cursor) break;
+      if (all.length >= limit) {
+        moreAvailable = true;
+        break;
+      }
       cursor = page.next_cursor;
     }
-    return all.slice(0, limit);
+    const sliced = all.slice(0, limit);
+    return {
+      results: sliced,
+      has_more: moreAvailable || all.length > limit,
+    };
   }
 }
 

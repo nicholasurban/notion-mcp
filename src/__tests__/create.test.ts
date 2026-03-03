@@ -29,6 +29,7 @@ function makeCtx() {
         description: "Posts",
         fields: ["Title", "Status"],
         allowedActions: ["query", "read", "create", "update"],
+        writeAllowlist: ["Title", "Status"],
         aliases: [],
       },
       "read-only": {
@@ -36,6 +37,7 @@ function makeCtx() {
         description: "Archive",
         fields: ["Title"],
         allowedActions: ["query", "read"],
+        writeAllowlist: [],
         aliases: [],
       },
     },
@@ -98,5 +100,29 @@ describe("handleCreate", () => {
       content: "x".repeat(100_001),
     }));
     expect(result.error).toContain("100KB");
+  });
+
+  it("rejects properties not in writeAllowlist", async () => {
+    const ctx = makeCtx();
+    ctx.config.databases["content-calendar"].writeAllowlist = ["Title"];
+    const result = JSON.parse(await handleCreate(ctx, {
+      mode: "create",
+      database: "content-calendar",
+      properties: { Title: "Test", Status: "Draft" },
+    }));
+    expect(result.error).toContain("writeAllowlist");
+  });
+
+  it("strips empty values from create properties", async () => {
+    const ctx = makeCtx();
+    ctx.config.databases["content-calendar"].writeAllowlist = ["Title", "Status"];
+    const result = JSON.parse(await handleCreate(ctx, {
+      mode: "create",
+      database: "content-calendar",
+      properties: { Title: "Test", Status: "" },
+    }));
+    expect(result.created).toBe(true);
+    const createCall = (ctx.api.client.pages.create as any).mock.calls[0][0];
+    expect(Object.keys(createCall.properties)).not.toContain("Status");
   });
 });

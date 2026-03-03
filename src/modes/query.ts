@@ -60,7 +60,7 @@ export async function handleQuery(ctx: ToolContext, params: ToolParams): Promise
   const limit = params.limit ?? 50;
 
   // Paginate through all results up to limit
-  const results = await ctx.api.paginateAll(
+  const { results, has_more } = await ctx.api.paginateAll(
     (cursor) => ctx.api.queryDatabase(dbConfig.id, {
       filter,
       sorts,
@@ -107,7 +107,10 @@ export async function handleQuery(ctx: ToolContext, params: ToolParams): Promise
 
   const table = formatTable(rows, [...allColumns], { total: results.length });
 
-  if (rows.length === 0) return table;
+  const paginationLine = has_more
+    ? `⚠️ TRUNCATED — returned ${rows.length} items but MORE EXIST in database. Increase limit or paginate to get all results.`
+    : `✅ COMPLETE — all ${rows.length} matching items returned.`;
 
-  return `<untrusted_content>\n${table}\n</untrusted_content>`;
+  if (rows.length === 0) return `${table}\n${paginationLine}`;
+  return `<untrusted_content>\n${table}\n</untrusted_content>\n${paginationLine}`;
 }

@@ -61,15 +61,17 @@ describe("NotionAPI", () => {
       if (call === 1) return { results: [1, 2, 3], next_cursor: "abc", has_more: true };
       return { results: [4, 5], next_cursor: null, has_more: false };
     };
-    const results = await api.paginateAll(fetcher, 10);
+    const { results, has_more } = await api.paginateAll(fetcher, 10);
     expect(results).toEqual([1, 2, 3, 4, 5]);
+    expect(has_more).toBe(false);
   });
 
   it("paginateAll respects limit", async () => {
     const api = new NotionAPI("ntn_test");
     const fetcher = async () => ({ results: [1, 2, 3, 4, 5], next_cursor: "abc", has_more: true });
-    const results = await api.paginateAll(fetcher, 3);
+    const { results, has_more } = await api.paginateAll(fetcher, 3);
     expect(results).toEqual([1, 2, 3]);
+    expect(has_more).toBe(true);
   });
 });
 

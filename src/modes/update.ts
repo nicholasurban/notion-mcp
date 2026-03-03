@@ -1,6 +1,7 @@
 import type { ToolContext, ToolParams } from "../tool.js";
 import { markdownToBlocks } from "../markdown.js";
 import { buildProperties } from "../build-properties.js";
+import { validateWriteAllowlist, stripEmptyValues } from "../safety.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_CONTENT_SIZE = 100_000;
@@ -74,12 +75,48 @@ async function singleUpdate(
   const err = checkAllowed(ctx, dbName);
   if (err) return JSON.stringify({ error: err });
 
-  // Update properties
+  // Safety: validate writeAllowlist
+  if (params.properties && dbName) {
+    const db = ctx.config.databases[dbName];
+    if (db?.writeAllowlist && db.writeAllowlist.length > 0) {
+      const err2 = validateWriteAllowlist(params.properties, db.writeAllowlist, params.clear_fields);
+      if (err2) return JSON.stringify({ error: err2 });
+    }
+  }
+
+  // Safety: strip empty values
   if (params.properties) {
+    params.properties = stripEmptyValues(params.properties) as Record<string, unknown>;
+  }
+
+  // Update properties
+  if (params.properties && Object.keys(params.properties).length > 0 || params.clear_fields?.length) {
     const schema = databaseId
       ? await ctx.api.getSchema(databaseId)
       : {};
-    const notionProps = buildProperties(params.properties, schema);
+    const notionProps = buildProperties(params.properties ?? {}, schema);
+
+    // Handle clear_fields: build explicit empty values
+    if (params.clear_fields?.length) {
+      for (const field of params.clear_fields) {
+        const type = schema[field];
+        if (!type) continue;
+        switch (type) {
+          case "rich_text": notionProps[field] = { rich_text: [] }; break;
+          case "multi_select": notionProps[field] = { multi_select: [] }; break;
+          case "relation": notionProps[field] = { relation: [] }; break;
+          case "url": notionProps[field] = { url: null }; break;
+          case "email": notionProps[field] = { email: null }; break;
+          case "number": notionProps[field] = { number: null }; break;
+          case "date": notionProps[field] = { date: null }; break;
+          case "select": notionProps[field] = { select: null }; break;
+          case "status": notionProps[field] = { status: null }; break;
+          case "checkbox": notionProps[field] = { checkbox: false }; break;
+          default: break;
+        }
+      }
+    }
+
     await ctx.api.retryWithBackoff(() =>
       ctx.api.client.pages.update({ page_id: pageId, properties: notionProps as any }),
     );
@@ -88,6 +125,18 @@ async function singleUpdate(
   // Replace content
   if (params.content) {
     await replaceContent(ctx, pageId, params.content);
+  }
+
+  // Audit: log the write (best-effort)
+  if (ctx.auditLog && params.properties) {
+    ctx.auditLog.log({
+      mode: "update",
+      database: dbName ?? "unknown",
+      page_id: pageId,
+      fields_sent: Object.keys(params.properties),
+      clear_fields: params.clear_fields ?? [],
+      previous_values: {},  // previous values require extra read — Phase 2
+    }).catch(() => {});
   }
 
   return JSON.stringify({ updated: true, page_id: pageId });
@@ -100,6 +149,10 @@ async function batchUpdate(
 ): Promise<string> {
   // Build properties without page_ids key
   const { page_ids: _, ...restProps } = params.properties!;
+
+  // Safety: strip empty values from shared properties
+  const cleanedProps = stripEmptyValues(restProps as Record<string, unknown>) as Record<string, unknown>;
+
   const results: Array<{ page_id: string; ok: boolean; error?: string }> = [];
 
   for (const pageId of pageIds) {
@@ -116,14 +169,38 @@ async function batchUpdate(
         continue;
       }
 
+      // Safety: validate writeAllowlist
+      if (dbName) {
+        const db = ctx.config.databases[dbName];
+        if (db?.writeAllowlist && db.writeAllowlist.length > 0) {
+          const err2 = validateWriteAllowlist(cleanedProps, db.writeAllowlist, params.clear_fields);
+          if (err2) {
+            results.push({ page_id: pageId, ok: false, error: err2 });
+            continue;
+          }
+        }
+      }
+
       const schema = databaseId
         ? await ctx.api.getSchema(databaseId)
         : {};
-      const notionProps = buildProperties(restProps as Record<string, unknown>, schema);
+      const notionProps = buildProperties(cleanedProps, schema);
       await ctx.api.retryWithBackoff(() =>
         ctx.api.client.pages.update({ page_id: pageId, properties: notionProps as any }),
       );
       results.push({ page_id: pageId, ok: true });
+
+      // Audit: log the write (best-effort)
+      if (ctx.auditLog) {
+        ctx.auditLog.log({
+          mode: "update",
+          database: dbName ?? "unknown",
+          page_id: pageId,
+          fields_sent: Object.keys(cleanedProps),
+          clear_fields: params.clear_fields ?? [],
+          previous_values: {},  // Phase 2
+        }).catch(() => {});
+      }
     } catch (e: any) {
       results.push({ page_id: pageId, ok: false, error: e.message });
     }
