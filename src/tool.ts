@@ -28,7 +28,7 @@ export function buildToolSchema(databaseNames: string[], aliasNames: string[] = 
       .describe("Key-value properties"),
     content: z.string().optional().describe("Markdown body"),
     topic: z.string().optional().describe("Help topic name"),
-    limit: z.number().int().min(1).max(200).default(50).optional()
+    limit: z.number().int().min(1).max(500).default(50).optional()
       .describe("Max results"),
     clear_fields: z.array(z.string()).optional()
       .describe("Fields to explicitly clear (required to intentionally empty a field)"),

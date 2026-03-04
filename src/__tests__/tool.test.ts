@@ -25,6 +25,18 @@ describe("buildToolSchema", () => {
     expect(enumType.options).toContain("products");
   });
 
+  it("allows limit up to 500", () => {
+    const schema = buildToolSchema(["test-db"]);
+    const result = schema.limit.safeParse(500);
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects limit above 500", () => {
+    const schema = buildToolSchema(["test-db"]);
+    const result = schema.limit.safeParse(501);
+    expect(result.success).toBe(false);
+  });
+
   it("schema accepts clear_fields parameter", () => {
     const schema = buildToolSchema(["test-db"], []);
     expect(schema.clear_fields).toBeDefined();
