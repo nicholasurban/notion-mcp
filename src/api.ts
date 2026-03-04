@@ -5,6 +5,8 @@ export class NotionAPI {
   public client: Client;
   private token: string;
   private schemaCache: Map<string, Record<string, string>> = new Map();
+  private countCache: Map<string, { count: number; timestamp: number }> = new Map();
+  private static COUNT_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
   constructor(token: string) {
     this.client = new Client({ auth: token });
@@ -88,6 +90,37 @@ export class NotionAPI {
       }
       return res.json() as Promise<{ results: any[]; next_cursor: string | null; has_more: boolean }>;
     });
+  }
+
+  getEstimatedCount(databaseId: string): number | null {
+    const entry = this.countCache.get(databaseId);
+    if (!entry) return null;
+    if (Date.now() - entry.timestamp > NotionAPI.COUNT_TTL_MS) {
+      this.countCache.delete(databaseId);
+      return null;
+    }
+    return entry.count;
+  }
+
+  async refreshCount(databaseId: string): Promise<number> {
+    let count = 0;
+    let cursor: string | undefined;
+    while (true) {
+      // queryDatabase already has retryWithBackoff internally
+      const page = await this.queryDatabase(databaseId, {
+        page_size: 100,
+        start_cursor: cursor,
+      });
+      count += page.results.length;
+      if (!page.has_more || !page.next_cursor) break;
+      cursor = page.next_cursor;
+    }
+    this.countCache.set(databaseId, { count, timestamp: Date.now() });
+    return count;
+  }
+
+  expireCountCache(databaseId: string): void {
+    this.countCache.delete(databaseId);
   }
 
   async paginateAll<T>(

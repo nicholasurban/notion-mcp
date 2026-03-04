@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { NotionAPI, AIError } from "../api.js";
 
 describe("NotionAPI", () => {
@@ -72,6 +72,54 @@ describe("NotionAPI", () => {
     const { results, has_more } = await api.paginateAll(fetcher, 3);
     expect(results).toEqual([1, 2, 3]);
     expect(has_more).toBe(true);
+  });
+});
+
+describe("DatabaseCountCache", () => {
+  it("returns null for uncached database", () => {
+    const api = new NotionAPI("ntn_test");
+    expect(api.getEstimatedCount("db-123")).toBeNull();
+  });
+
+  it("returns count after refresh", async () => {
+    const api = new NotionAPI("ntn_test");
+    let call = 0;
+    vi.spyOn(api, "queryDatabase").mockImplementation(async () => {
+      call++;
+      if (call === 1) return { results: Array(100).fill({ id: "x" }), next_cursor: "c2", has_more: true };
+      return { results: Array(46).fill({ id: "x" }), next_cursor: null, has_more: false };
+    });
+
+    await api.refreshCount("db-123");
+    expect(api.getEstimatedCount("db-123")).toBe(146);
+  });
+
+  it("returns stale count within TTL", async () => {
+    const api = new NotionAPI("ntn_test");
+    vi.spyOn(api, "queryDatabase").mockResolvedValue({
+      results: Array(50).fill({ id: "x" }),
+      next_cursor: null,
+      has_more: false,
+    });
+
+    await api.refreshCount("db-123");
+    expect(api.getEstimatedCount("db-123")).toBe(50);
+    expect(api.getEstimatedCount("db-123")).toBe(50);
+  });
+
+  it("returns null after TTL expires", async () => {
+    const api = new NotionAPI("ntn_test");
+    vi.spyOn(api, "queryDatabase").mockResolvedValue({
+      results: Array(10).fill({ id: "x" }),
+      next_cursor: null,
+      has_more: false,
+    });
+
+    await api.refreshCount("db-123");
+    expect(api.getEstimatedCount("db-123")).toBe(10);
+
+    api.expireCountCache("db-123");
+    expect(api.getEstimatedCount("db-123")).toBeNull();
   });
 });
 
