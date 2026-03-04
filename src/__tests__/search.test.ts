@@ -10,6 +10,8 @@ function makeCtx(searchResults: any[] = []) {
     next_cursor: null,
     has_more: false,
   });
+  vi.spyOn(api, "getEstimatedCount").mockReturnValue(null);
+  vi.spyOn(api, "refreshCount").mockResolvedValue(0);
   const config: NotionConfig = {
     databases: {
       "content-calendar": { id: "db-111", description: "Posts", fields: ["Title"], allowedActions: ["query", "read", "create", "update"], aliases: [] },
@@ -73,7 +75,7 @@ describe("handleSearch", () => {
     }));
     const ctx = makeCtx(pages);
     const result = await handleSearch(ctx, { mode: "search", query: "post", limit: 3 });
-    expect(result).toContain("returned: 3");
+    expect(result).toContain("fetched: 3");
   });
 
   describe("database-scoped search", () => {
@@ -131,7 +133,21 @@ describe("handleSearch", () => {
       });
       const result = await handleSearch(ctx, { mode: "search", query: "Item", database: "products-shop" });
       expect(result).toContain("TRUNCATED");
-      expect(result).toContain("MORE EXIST");
+      expect(result).toContain("fetched 1");
+    });
+
+    it("shows estimated_total when truncated and cache exists", async () => {
+      const ctx = makeCtx();
+      vi.spyOn(ctx.api, "getSchema").mockResolvedValue({ Name: "title" });
+      vi.spyOn(ctx.api, "paginateAll").mockResolvedValue({
+        results: [{ id: "p1", properties: { Name: { type: "title", title: [{ plain_text: "Item" }] } } }],
+        has_more: true,
+      });
+      vi.spyOn(ctx.api, "getEstimatedCount").mockReturnValue(250);
+      vi.spyOn(ctx.api, "refreshCount").mockResolvedValue(250);
+      const result = await handleSearch(ctx, { mode: "search", query: "Item", database: "products-shop" });
+      expect(result).toContain("~250");
+      expect(result).toContain("TRUNCATED");
     });
 
     it("uses searchFields from config", async () => {

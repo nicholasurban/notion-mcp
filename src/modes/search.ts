@@ -92,11 +92,24 @@ async function databaseSearch(ctx: ToolContext, dbName: string, query: string, l
     for (const key of Object.keys(row)) allColumns.add(key);
   }
 
-  const table = formatTable(rows, [...allColumns], { total: results.length });
+  const estimatedTotal = has_more ? ctx.api.getEstimatedCount(dbConfig.id) : null;
 
-  const paginationLine = has_more
-    ? `⚠️ TRUNCATED — returned ${rows.length} items but MORE EXIST in database. Increase limit or paginate to get all results.`
-    : `✅ COMPLETE — all ${rows.length} matching items returned.`;
+  if (has_more && estimatedTotal === null) {
+    ctx.api.refreshCount(dbConfig.id).catch(() => {});
+  }
+
+  const table = formatTable(rows, [...allColumns], {
+    fetched: rows.length,
+    estimatedTotal: has_more ? estimatedTotal : undefined,
+  });
+
+  let paginationLine: string;
+  if (has_more) {
+    const countInfo = estimatedTotal != null ? `of ~${estimatedTotal} items (cached count, may be stale)` : "items (estimated_total: unknown - will be cached after this request)";
+    paginationLine = `⚠️ TRUNCATED - fetched ${rows.length} ${countInfo}. Increase limit (max 500) or add filters to narrow results.`;
+  } else {
+    paginationLine = `✅ COMPLETE - all ${rows.length} matching items returned.`;
+  }
 
   if (rows.length === 0) return `${table}\n${paginationLine}`;
   return `<untrusted_content>\n${table}\n</untrusted_content>\n${paginationLine}`;
@@ -146,12 +159,12 @@ async function globalSearch(ctx: ToolContext, query: string, limit: number): Pro
     return { Title: title, Database: dbName, "Last Edited": edited };
   });
 
-  const table = formatTable(rows, ["Title", "Database", "Last Edited"], { total: filtered.length });
+  const table = formatTable(rows, ["Title", "Database", "Last Edited"], { fetched: limited.length });
 
   const has_more = filtered.length > limited.length;
   const paginationLine = has_more
-    ? `⚠️ TRUNCATED — returned ${limited.length} items but MORE EXIST. Increase limit to get more results.`
-    : `✅ COMPLETE — all ${limited.length} matching items returned.`;
+    ? `⚠️ TRUNCATED - fetched ${limited.length} items but MORE EXIST. Increase limit to get more results.`
+    : `✅ COMPLETE - all ${limited.length} matching items returned.`;
 
   if (rows.length === 0) return `${table}\n${paginationLine}`;
   return `<untrusted_content>\n${table}\n</untrusted_content>\n${paginationLine}`;
