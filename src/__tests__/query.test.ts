@@ -15,6 +15,8 @@ function makeCtx(queryResults: any[] = [], hasMore = false) {
     const page = await fetcher(undefined);
     return { results: page.results.slice(0, limit), has_more: false };
   });
+  vi.spyOn(api, "getEstimatedCount").mockReturnValue(null);
+  vi.spyOn(api, "refreshCount").mockResolvedValue(0);
   const config: NotionConfig = {
     databases: {
       "content-calendar": {
@@ -136,6 +138,53 @@ describe("handleQuery", () => {
     });
     const result = await handleQuery(ctx, { mode: "query", database: "content-calendar" });
     expect(result).toContain("TRUNCATED");
-    expect(result).toContain("MORE EXIST");
+    expect(result).toContain("fetched 1");
+  });
+
+  it("shows estimated_total when cache has count and results are truncated", async () => {
+    const ctx = makeCtx([]);
+    vi.spyOn(ctx.api, "paginateAll").mockResolvedValue({
+      results: [{ id: "p1", properties: { Title: { type: "title", title: [{ plain_text: "X" }] } } }],
+      has_more: true,
+    });
+    vi.spyOn(ctx.api, "getEstimatedCount").mockReturnValue(346);
+    const result = await handleQuery(ctx, { mode: "query", database: "content-calendar" });
+    expect(result).toContain("~346");
+    expect(result).toContain("TRUNCATED");
+    expect(result).toContain("CACHED");
+  });
+
+  it("shows estimated_total unknown when no cache and truncated", async () => {
+    const ctx = makeCtx([]);
+    vi.spyOn(ctx.api, "paginateAll").mockResolvedValue({
+      results: [{ id: "p1", properties: { Title: { type: "title", title: [{ plain_text: "X" }] } } }],
+      has_more: true,
+    });
+    vi.spyOn(ctx.api, "getEstimatedCount").mockReturnValue(null);
+    const result = await handleQuery(ctx, { mode: "query", database: "content-calendar" });
+    expect(result).toContain("TRUNCATED");
+    expect(result).toContain("estimated_total: unknown");
+  });
+
+  it("triggers background count refresh when truncated and no cache", async () => {
+    const ctx = makeCtx([]);
+    vi.spyOn(ctx.api, "paginateAll").mockResolvedValue({
+      results: [{ id: "p1", properties: { Title: { type: "title", title: [{ plain_text: "X" }] } } }],
+      has_more: true,
+    });
+    vi.spyOn(ctx.api, "getEstimatedCount").mockReturnValue(null);
+    const refreshSpy = vi.spyOn(ctx.api, "refreshCount").mockResolvedValue(346);
+    await handleQuery(ctx, { mode: "query", database: "content-calendar" });
+    expect(refreshSpy).toHaveBeenCalledWith("db-111");
+  });
+
+  it("does not show estimated_total when COMPLETE", async () => {
+    const ctx = makeCtx([
+      { id: "page-1", properties: { Title: { type: "title", title: [{ plain_text: "Post 1" }] } } },
+    ]);
+    const result = await handleQuery(ctx, { mode: "query", database: "content-calendar" });
+    expect(result).toContain("COMPLETE");
+    expect(result).not.toContain("estimated_total");
+    expect(result).not.toContain("CACHED");
   });
 });

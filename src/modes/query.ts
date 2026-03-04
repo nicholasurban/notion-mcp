@@ -105,11 +105,26 @@ export async function handleQuery(ctx: ToolContext, params: ToolParams): Promise
     }
   }
 
-  const table = formatTable(rows, [...allColumns], { total: results.length });
+  // Get estimated total from cache
+  const estimatedTotal = has_more ? ctx.api.getEstimatedCount(dbConfig.id) : null;
 
-  const paginationLine = has_more
-    ? `⚠️ TRUNCATED — returned ${rows.length} items but MORE EXIST in database. Increase limit or paginate to get all results.`
-    : `✅ COMPLETE — all ${rows.length} matching items returned.`;
+  // Trigger background count refresh if truncated and no cache
+  if (has_more && estimatedTotal === null) {
+    ctx.api.refreshCount(dbConfig.id).catch(() => {}); // fire-and-forget
+  }
+
+  const table = formatTable(rows, [...allColumns], {
+    fetched: rows.length,
+    estimatedTotal: has_more ? estimatedTotal : undefined,
+  });
+
+  let paginationLine: string;
+  if (has_more) {
+    const countInfo = estimatedTotal != null ? `of ~${estimatedTotal} items (cached count, may be stale)` : "items (estimated_total: unknown - will be cached after this request)";
+    paginationLine = `⚠️ TRUNCATED - fetched ${rows.length} ${countInfo}. Increase limit (max 500) or add filters to narrow results.`;
+  } else {
+    paginationLine = `✅ COMPLETE - all ${rows.length} matching items returned.`;
+  }
 
   if (rows.length === 0) return `${table}\n${paginationLine}`;
   return `<untrusted_content>\n${table}\n</untrusted_content>\n${paginationLine}`;
