@@ -1,13 +1,12 @@
 export function formatTable(
   rows: Record<string, string>[],
   columns?: string[],
-  opts?: { total?: number }
+  opts?: { fetched?: number; estimatedTotal?: number | null }
 ): string {
   if (rows.length === 0) return "No results";
 
   const cols = columns ?? Object.keys(rows[0]);
 
-  // Filter out columns that are empty for all rows
   const activeCols = cols.filter((col) =>
     rows.some((row) => (row[col] ?? "").trim() !== "")
   );
@@ -20,7 +19,10 @@ export function formatTable(
     activeCols.map((col) => truncateCell(row[col] ?? "")).join(" | ")
   );
 
-  const footer = `returned: ${rows.length}${opts?.total != null ? ` | total: ${opts.total}` : ""}`;
+  let footer = `fetched: ${opts?.fetched ?? rows.length}`;
+  if (opts?.estimatedTotal != null) {
+    footer += ` | estimated_total: ~${opts.estimatedTotal} | ⚠️ CACHED count (5m TTL, may be stale - verify critical decisions)`;
+  }
 
   return [header, ...dataRows, footer].join("\n");
 }

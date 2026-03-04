@@ -13,10 +13,32 @@ describe("formatTable", () => {
     expect(result).toContain("Post 2 | Published");
   });
 
-  it("includes count footer", () => {
+  it("shows fetched count (not total)", () => {
     const rows = [{ Title: "A" }];
-    const result = formatTable(rows, ["Title"], { total: 10 });
-    expect(result).toContain("returned: 1 | total: 10");
+    const result = formatTable(rows, ["Title"], { fetched: 1 });
+    expect(result).toContain("fetched: 1");
+    expect(result).not.toContain("total:");
+  });
+
+  it("shows estimated_total when provided", () => {
+    const rows = [{ Title: "A" }];
+    const result = formatTable(rows, ["Title"], { fetched: 1, estimatedTotal: 346 });
+    expect(result).toContain("fetched: 1");
+    expect(result).toContain("estimated_total: ~346");
+  });
+
+  it("shows staleness warning with estimated_total", () => {
+    const rows = [{ Title: "A" }];
+    const result = formatTable(rows, ["Title"], { fetched: 1, estimatedTotal: 346 });
+    expect(result).toContain("CACHED");
+    expect(result).toContain("stale");
+  });
+
+  it("omits estimated_total when not provided", () => {
+    const rows = [{ Title: "A" }];
+    const result = formatTable(rows, ["Title"], { fetched: 1 });
+    expect(result).not.toContain("estimated_total");
+    expect(result).not.toContain("CACHED");
   });
 
   it("omits columns that are empty for all rows", () => {
