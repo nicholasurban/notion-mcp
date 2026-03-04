@@ -95,9 +95,15 @@ When `writeAllowlist` is configured for a database:
 
 ### Pagination Metadata
 
-Every `query` and `search` response includes a trailing status line:
-- `✅ COMPLETE — all N matching items returned.`
-- `⚠️ TRUNCATED — returned N items but MORE EXIST in database. Increase limit or paginate to get all results.`
+Every `query` and `search` response includes a footer and status line:
+
+**Footer:** `fetched: N` with optional `estimated_total: ~M` (cached database size, 5-min TTL).
+
+**Status line:**
+- `✅ COMPLETE - all N matching items returned.`
+- `⚠️ TRUNCATED - fetched N of ~M items (cached count, may be stale). Increase limit (max 500) or add filters to narrow results.`
+
+When a query is truncated and no cached count exists, the server fires a background count refresh (ID-only pagination, no property extraction). The cached count appears on subsequent requests with a staleness warning so agents know to verify critical decisions against potentially stale data.
 
 **Rules:**
 - Only databases listed in config are accessible (security boundary)
@@ -170,7 +176,7 @@ Two auth methods, used simultaneously:
 
 ```bash
 npm install
-npm test           # 122 tests
+npm test           # 162 tests
 npm run build      # TypeScript → dist/
 ```
 
@@ -223,7 +229,7 @@ Use the OAuth credentials:
 src/
   index.ts          # Express HTTP server + MCP SDK setup
   config.ts         # Zod-validated config loader
-  api.ts            # Notion API client (retry, cache, pagination)
+  api.ts            # Notion API client (retry, schema cache, pagination, database count cache)
   tool.ts           # Single tool schema + mode dispatch (incl. clear_fields param)
   safety.ts         # Write allowlist validation + empty-value stripping
   audit.ts          # Append-only JSONL write audit log
