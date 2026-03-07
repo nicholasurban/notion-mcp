@@ -1,3 +1,21 @@
+/**
+ * Convert a URL-derived filename into clean, human-readable alt text.
+ * "solshine-photovites-emf-tested-1.jpeg" → "Solshine Photovites EMF Tested"
+ */
+function cleanFileName(urlOrName: string): string {
+  // Extract filename from URL
+  let name = urlOrName.split("/").pop()?.split("?")[0] || urlOrName;
+  // Strip file extension
+  name = name.replace(/\.[a-z0-9]+$/i, "");
+  // Strip trailing number suffixes like -1, -2, -scaled, -scaled-1
+  name = name.replace(/[-_](?:scaled|[0-9]+)(?:[-_](?:scaled|[0-9]+))*$/, "");
+  // Replace hyphens and underscores with spaces
+  name = name.replace(/[-_]+/g, " ");
+  // Title case: capitalize first letter of each word
+  name = name.replace(/\b\w/g, (c) => c.toUpperCase());
+  return name.trim();
+}
+
 // Read-only types that Notion does not allow writing to
 const READ_ONLY_TYPES = new Set([
   "formula", "rollup", "created_by", "created_time",
@@ -63,14 +81,20 @@ export function buildProperties(
         };
         break;
       case "files": {
-        // Accept a URL string, an array of URL strings, or Notion file objects
-        const urls = Array.isArray(value) ? value : [value];
+        // Accept: URL string, {url, name} object, array of either, or Notion file objects
+        const items = Array.isArray(value) ? value : [value];
         result[key] = {
-          files: urls.map((item: unknown) => {
+          files: items.map((item: unknown) => {
             if (typeof item === "string") {
-              // Derive a filename from the URL or use the raw string
-              const name = item.split("/").pop()?.split("?")[0] || String(item);
-              return { name, type: "external", external: { url: item } };
+              return { name: cleanFileName(item), type: "external", external: { url: item } };
+            }
+            if (typeof item === "object" && item !== null) {
+              const obj = item as Record<string, unknown>;
+              // {url, name} shorthand — name is used as alt text in Notion
+              if (obj.url && typeof obj.url === "string") {
+                const name = obj.name ? String(obj.name) : cleanFileName(obj.url);
+                return { name, type: "external", external: { url: obj.url } };
+              }
             }
             // Already a Notion file object (e.g. {name, external: {url}})
             return item;
