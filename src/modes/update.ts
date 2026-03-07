@@ -96,6 +96,10 @@ async function singleUpdate(
       : {};
     const notionProps = buildProperties(params.properties ?? {}, schema);
 
+    // Extract and remove skipped-field metadata before sending to Notion
+    const skipped = (notionProps as any).__skipped as Array<{ field: string; type: string; reason: string }> | undefined;
+    delete (notionProps as any).__skipped;
+
     // Handle clear_fields: build explicit empty values
     if (params.clear_fields?.length) {
       for (const field of params.clear_fields) {
@@ -112,6 +116,7 @@ async function singleUpdate(
           case "select": notionProps[field] = { select: null }; break;
           case "status": notionProps[field] = { status: null }; break;
           case "checkbox": notionProps[field] = { checkbox: false }; break;
+          case "files": notionProps[field] = { files: [] }; break;
           default: break;
         }
       }
@@ -120,6 +125,15 @@ async function singleUpdate(
     await ctx.api.retryWithBackoff(() =>
       ctx.api.client.pages.update({ page_id: pageId, properties: notionProps as any }),
     );
+
+    // If any fields were silently skipped, report them as warnings
+    if (skipped && skipped.length > 0) {
+      return JSON.stringify({
+        updated: true,
+        page_id: pageId,
+        warnings: skipped.map((s) => `Field "${s.field}" (${s.type}) was NOT written: ${s.reason}`),
+      });
+    }
   }
 
   // Replace content
@@ -185,10 +199,16 @@ async function batchUpdate(
         ? await ctx.api.getSchema(databaseId)
         : {};
       const notionProps = buildProperties(cleanedProps, schema);
+      const batchSkipped = (notionProps as any).__skipped;
+      delete (notionProps as any).__skipped;
       await ctx.api.retryWithBackoff(() =>
         ctx.api.client.pages.update({ page_id: pageId, properties: notionProps as any }),
       );
-      results.push({ page_id: pageId, ok: true });
+      const entry: any = { page_id: pageId, ok: true };
+      if (batchSkipped?.length) {
+        entry.warnings = batchSkipped.map((s: any) => `Field "${s.field}" (${s.type}) was NOT written: ${s.reason}`);
+      }
+      results.push(entry);
 
       // Audit: log the write (best-effort)
       if (ctx.auditLog) {

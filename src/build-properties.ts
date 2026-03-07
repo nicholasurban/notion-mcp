@@ -1,12 +1,21 @@
+// Read-only types that Notion does not allow writing to
+const READ_ONLY_TYPES = new Set([
+  "formula", "rollup", "created_by", "created_time",
+  "last_edited_by", "last_edited_time", "unique_id", "button",
+]);
+
 /**
  * Shared helper: convert user-facing key-value properties into
  * Notion API property format using the database schema.
+ *
+ * Returns { properties, skipped } so callers can report dropped fields.
  */
 export function buildProperties(
   props: Record<string, unknown>,
   schema: Record<string, string>,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
+  const skipped: Array<{ field: string; type: string; reason: string }> = [];
 
   for (const [key, value] of Object.entries(props)) {
     const type = schema[key];
@@ -53,10 +62,35 @@ export function buildProperties(
           relation: (Array.isArray(value) ? value : [value]).map((id: string) => ({ id })),
         };
         break;
+      case "files": {
+        // Accept a URL string, an array of URL strings, or Notion file objects
+        const urls = Array.isArray(value) ? value : [value];
+        result[key] = {
+          files: urls.map((item: unknown) => {
+            if (typeof item === "string") {
+              // Derive a filename from the URL or use the raw string
+              const name = item.split("/").pop()?.split("?")[0] || String(item);
+              return { name, type: "external", external: { url: item } };
+            }
+            // Already a Notion file object (e.g. {name, external: {url}})
+            return item;
+          }),
+        };
+        break;
+      }
       default:
-        // Skip unsupported types (formula, rollup, etc.)
+        if (READ_ONLY_TYPES.has(type)) {
+          skipped.push({ field: key, type, reason: "read-only" });
+        } else {
+          skipped.push({ field: key, type, reason: "unsupported type" });
+        }
         break;
     }
+  }
+
+  // Attach skipped info so callers can surface it
+  if (skipped.length > 0) {
+    (result as any).__skipped = skipped;
   }
 
   return result;
