@@ -70,6 +70,8 @@ async function databaseSearch(ctx: ToolContext, dbName: string, query: string, l
   const priorityFields = dbConfig.fields ?? [];
   const rows = results.map((page: any) => {
     const row: Record<string, string> = {};
+    // Always include page_id so callers can use it for updates
+    row["page_id"] = page.id;
     for (const field of priorityFields) {
       if (page.properties?.[field]) {
         row[field] = extractProperty(page.properties[field]);

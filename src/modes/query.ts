@@ -76,6 +76,9 @@ export async function handleQuery(ctx: ToolContext, params: ToolParams): Promise
   const rows = results.map((page: any) => {
     const row: Record<string, string> = {};
 
+    // Always include page_id so callers can use it for updates
+    row["page_id"] = page.id;
+
     // Add priority fields first
     for (const field of priorityFields) {
       if (page.properties?.[field]) {
