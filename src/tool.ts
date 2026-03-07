@@ -17,7 +17,7 @@ export function buildToolDescription(databases: Record<string, DatabaseConfig>):
 export function buildToolSchema(databaseNames: string[], aliasNames: string[] = []) {
   const allDbValues = [...databaseNames, ...aliasNames];
   return {
-    mode: z.enum(["help", "search", "query", "read", "create", "update"])
+    mode: z.enum(["help", "search", "query", "read", "create", "update", "archive"])
       .describe("Operation mode"),
     database: z.enum(allDbValues as [string, ...string[]])
       .optional().describe("Database name or alias (e.g. 'shop' → products-shop)"),
@@ -95,6 +95,10 @@ export async function toolHandler(ctx: ToolContext, params: ToolParams): Promise
       case "update": {
         const { handleUpdate } = await import("./modes/update.js");
         return await handleUpdate(ctx, params);
+      }
+      case "archive": {
+        const { handleArchive } = await import("./modes/archive.js");
+        return await handleArchive(ctx, params);
       }
       default:
         return JSON.stringify({ error: `Unknown mode: ${params.mode}` });
