@@ -30,6 +30,8 @@ export function extractProperty(prop: any): string {
       return extractRollup(prop.rollup);
     case "relation":
       return `${prop.relation?.length ?? 0} linked`;
+    case "files":
+      return prop.files?.map((f: any) => f.name || f.external?.url || f.file?.url || "").filter(Boolean).join(", ") || "";
     default:
       return "[unsupported]";
   }
