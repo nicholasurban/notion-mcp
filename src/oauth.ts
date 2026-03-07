@@ -15,9 +15,31 @@ interface StoredCode {
   expiresAt: number;
 }
 
+const TOKEN_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+/** Create an HMAC-signed stateless token: base64url(issuedAt).base64url(hmac) */
+function createSignedToken(secret: string): string {
+  const issuedAt = Date.now().toString();
+  const payload = Buffer.from(issuedAt).toString("base64url");
+  const sig = crypto.createHmac("sha256", secret).update(payload).digest("base64url");
+  return `${payload}.${sig}`;
+}
+
+/** Verify an HMAC-signed token. Returns true if signature matches and token is not expired. */
+function verifySignedToken(token: string, secret: string): boolean {
+  const dot = token.indexOf(".");
+  if (dot === -1) return false;
+  const payload = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+  const expected = crypto.createHmac("sha256", secret).update(payload).digest("base64url");
+  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return false;
+  const issuedAt = parseInt(Buffer.from(payload, "base64url").toString(), 10);
+  if (isNaN(issuedAt)) return false;
+  return Date.now() - issuedAt < TOKEN_MAX_AGE_MS;
+}
+
 export function setupOAuth(app: any, config: OAuthConfig) {
   const authCodes = new Map<string, StoredCode>();
-  const accessTokens = new Set<string>();
 
   // Cleanup expired auth codes periodically
   setInterval(() => {
@@ -120,12 +142,12 @@ export function setupOAuth(app: any, config: OAuthConfig) {
 
     authCodes.delete(code);
 
-    const accessToken = crypto.randomBytes(32).toString("hex");
-    accessTokens.add(accessToken);
+    const accessToken = createSignedToken(config.clientSecret);
 
     res.json({
       access_token: accessToken,
       token_type: "Bearer",
+      expires_in: Math.floor(TOKEN_MAX_AGE_MS / 1000),
     });
   });
 
@@ -135,7 +157,7 @@ export function setupOAuth(app: any, config: OAuthConfig) {
       if (!auth) return false;
       const token = auth.replace(/^Bearer\s+/i, "");
       if (config.staticToken && token === config.staticToken) return true;
-      return accessTokens.has(token);
+      return verifySignedToken(token, config.clientSecret);
     },
   };
 }
